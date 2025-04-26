@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard Prestasi Pelajar</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      background: #f9f9f9;
+    }
+    .highlight {
+      font-weight: bold;
+      color: green;
+    }
+    .lowlight {
+      font-weight: bold;
+      color: red;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Dashboard Prestasi Pelajar</h2>
+
+<div class="card">
+  <h3>Filter & Search</h3>
+  <label for="filter">Filter Prestasi:</label>
+  <select id="filter" onchange="refreshDashboard()">
+    <option value="All">Semua</option>
+    <option value="Cemerlang">Cemerlang</option>
+    <option value="Lulus Penuh">Lulus Penuh</option>
+    <option value="Lulus Sebahagian">Lulus Sebahagian</option>
+    <option value="Lemah">Lemah</option>
+  </select>
+
+  <label for="search" style="margin-left:20px;">Cari Nama:</label>
+  <input type="text" id="search" onkeyup="refreshDashboard()" placeholder="Cari pelajar...">
+</div>
+
+<div class="card">
+  <h3>Statistik Ringkas</h3>
+  <p id="averageScore"></p>
+  <p id="highestScore"></p>
+  <p id="lowestScore"></p>
+</div>
+
+<div class="card">
+  <h3>Taburan Prestasi</h3>
+  <canvas id="pieChart"></canvas>
+</div>
+
+<div class="card">
+  <h3>Analisis Komponen</h3>
+  <canvas id="barChart"></canvas>
+</div>
+
+<div class="card">
+  <h3>Ranking Pelajar</h3>
+  <ol id="rankingList"></ol>
+</div>
+
+<script>
+const CSV_URL = "https://docs.google.com/spreadsheets/d/1cwk8B-Dv9Qsg25qph-ZiY1qzICNkksedmIzDhnRRmYo/export?format=csv";
+
+let allStudents = [];
+
+async function getData() {
+    const response = await fetch(CSV_URL);
+    const data = await response.text();
+    const rows = data.split("\n").slice(1);
+
+    const students = rows.map(row => {
+        const cols = row.split(",");
+        const nama = cols[1];
+        const esei1 = parseFloat(cols[2]) || 0;
+        const esei2 = parseFloat(cols[3]) || 0;
+        const esei4 = parseFloat(cols[4]) || 0;
+        const esei5 = parseFloat(cols[5]) || 0;
+        const jumlah = esei1 + esei2 + esei4 + esei5;
+        const purata = (jumlah / 400) * 100;
+
+        let kategori = "";
+        if (purata >= 70) kategori = "Cemerlang";
+        else if (purata >= 40) kategori = "Lulus Penuh";
+        else if (purata >= 30) kategori = "Lulus Sebahagian";
+        else kategori = "Lemah";
+
+        return {
+            nama,
+            purata: purata.toFixed(1),
+            kategori,
+            komponen: { esei1, esei2, esei4, esei5 }
+        };
+    });
+
+    return students;
+}
+
+function refreshDashboard() {
+    const filter = document.getElementById("filter").value;
+    const search = document.getElementById("search").value.toLowerCase();
+    const filtered = allStudents.filter(s => 
+      (filter === "All" || s.kategori === filter) &&
+      (s.nama.toLowerCase().includes(search))
+    );
+
+    showStatistics(filtered);
+    showPieChart(filtered);
+    showBarChart(filtered);
+    showRanking(filtered);
+}
+
+function showStatistics(data) {
+    const avg = data.reduce((sum, s) => sum + parseFloat(s.purata), 0) / (data.length || 1);
+    const highest = Math.max(...data.map(s => parseFloat(s.purata)));
+    const lowest = Math.min(...data.map(s => parseFloat(s.purata)));
+
+    document.getElementById("averageScore").innerText = `Purata Markah: ${avg.toFixed(1)}%`;
+    document.getElementById("highestScore").innerText = `Markah Tertinggi: ${highest.toFixed(1)}%`;
+    document.getElementById("lowestScore").innerText = `Markah Terendah: ${lowest.toFixed(1)}%`;
+}
+
+function showPieChart(data) {
+    const ctx = document.getElementById('pieChart').getContext('2d');
+    if (window.pieChart) window.pieChart.destroy();
+    const kategori = {
+        "Cemerlang": 0,
+        "Lulus Penuh": 0,
+        "Lulus Sebahagian": 0,
+        "Lemah": 0
+    };
+    data.forEach(s => kategori[s.kategori]++);
+
+    window.pieChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: Object.keys(kategori),
+            datasets: [{
+                label: 'Prestasi',
+                data: Object.values(kategori),
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.7)',
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(255, 206, 86, 0.7)',
+                    'rgba(255, 99, 132, 0.7)'
+                ]
+            }]
+        }
+    });
+}
+
+function showBarChart(data) {
+    const ctx = document.getElementById('barChart').getContext('2d');
+    if (window.barChart) window.barChart.destroy();
+    const avgEseis = {
+        esei1: data.reduce((sum, s) => sum + s.komponen.esei1, 0) / (data.length || 1),
+        esei2: data.reduce((sum, s) => sum + s.komponen.esei2, 0) / (data.length || 1),
+        esei4: data.reduce((sum, s) => sum + s.komponen.esei4, 0) / (data.length || 1),
+        esei5: data.reduce((sum, s) => sum + s.komponen.esei5, 0) / (data.length || 1),
+    };
+
+    window.barChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Esei 1', 'Esei 2', 'Esei 4', 'Esei 5'],
+            datasets: [{
+                label: 'Purata Markah Komponen',
+                data: [avgEseis.esei1, avgEseis.esei2, avgEseis.esei4, avgEseis.esei5],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.7)',
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(255, 206, 86, 0.7)',
+                    'rgba(255, 99, 132, 0.7)'
+                ]
+            }]
+        },
+        options: {
+            scales: { y: { beginAtZero: true, max: 100 } }
+        }
+    });
+}
+
+function showRanking(data) {
+    const rankingDiv = document.getElementById('rankingList');
+    rankingDiv.innerHTML = '';
+
+    const sorted = [...data].sort((a, b) => b.purata - a.purata);
+
+    sorted.forEach((s, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="${i==0?'highlight':''} ${i==sorted.length-1?'lowlight':''}">${i+1}. ${s.nama} (${s.purata}%) - ${s.kategori}</span>`;
+        rankingDiv.appendChild(li);
+    });
+}
+
+async function start() {
+    allStudents = await getData();
+    refreshDashboard();
+}
+
+start();
+</script>
+
+</body>
+</html>
